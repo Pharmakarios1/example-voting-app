@@ -49,27 +49,15 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
  
-      
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: 'v0.76.0'
           image-ref: pharmakarios1/voting-app-${{ matrix.service }}:${{ github.sha }}
-          format: json
-          output: trivy-results-${{ matrix.service }}.json
+          format: table
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '1'
-
-      - name: Upload Trivy report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: trivy-report-${{ matrix.service }}
-          path: trivy-results-${{ matrix.service }}.json
-          if-no-files-found: warn
-          retention-days: 7
-
 
           
   deploy-to-eks:
