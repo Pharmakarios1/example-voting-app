@@ -15,7 +15,13 @@ RUN python -m pip install --no-cache-dir --upgrade \
 
 # Install application dependencies
 COPY requirements.txt ./requirements.txt
-RUN python -m pip install --no-cache-dir -r requirements.txt
+
+RUN python -m pip install --no-cache-dir -r requirements.txt && \
+    python -m pip install --no-cache-dir --upgrade \
+      "setuptools>=78.1.1" \
+      "msgpack>=1.2.1" \
+      "urllib3>=2.8.0" && \
+    python -m pip check
 
 # Development stage
 FROM base AS dev
