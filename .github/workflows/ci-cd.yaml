@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKERHUB_USERNAME: pharmakarios1
 
 jobs:
   build-and-scan:
@@ -26,7 +26,7 @@ jobs:
         service: [vote, result, worker]
 
     steps:
-      - name: Checkout code
+      - name: Checkout source code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
@@ -39,35 +39,24 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and scan image
+      - name: Build application image
         uses: docker/build-push-action@v6
         with:
           context: ./${{ matrix.service }}
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           load: ${{ github.event_name == 'pull_request' }}
-          tags: ${{ env.DOCKERHUB_USERNAME }}/voting-app-${{ matrix.service }}:${{ github.sha }}
+          tags: pharmakarios1/voting-app-${{ matrix.service }}:${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-      - name: Scan published image with Trivy
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@0.33.1
         with:
-          image-ref: ${{ env.DOCKERHUB_USERNAME }}/voting-app-${{ matrix.service }}:${{ github.sha }}
+          image-ref: pharmakarios1/voting-app-${{ matrix.service }}:${{ github.sha }}
           format: table
           severity: HIGH,CRITICAL
-          exit-code: '1'
           ignore-unfixed: true
-
-      - name: Scan pull request image with Trivy
-        if: github.event_name == 'pull_request'
-        uses: aquasecurity/trivy-action@0.33.1
-        with:
-          image-ref: ${{ env.DOCKERHUB_USERNAME }}/voting-app-${{ matrix.service }}:${{ github.sha }}
-          format: table
-          severity: HIGH,CRITICAL
           exit-code: '1'
-          ignore-unfixed: true
 
   deploy-to-eks:
     name: Deploy to Amazon EKS
@@ -76,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout source code
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
@@ -86,7 +75,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Update EKS kubeconfig
+      - name: Configure kubectl for EKS
         run: |
           aws eks update-kubeconfig \
             --region "$AWS_REGION" \
@@ -102,11 +91,11 @@ jobs:
         run: |
           helm lint ./helm/voting-app
           helm template voting-app ./helm/voting-app \
-            --set vote.image.tag=${GITHUB_SHA} \
-            --set result.image.tag=${GITHUB_SHA} \
-            --set worker.image.tag=${GITHUB_SHA}
+            --set vote.image.tag="${GITHUB_SHA}" \
+            --set result.image.tag="${GITHUB_SHA}" \
+            --set worker.image.tag="${GITHUB_SHA}"
 
-      - name: Deploy with Helm
+      - name: Deploy application with Helm
         run: |
           helm upgrade --install voting-app ./helm/voting-app \
             --namespace voting-app \
@@ -119,5 +108,3 @@ jobs:
             --set result.image.tag="${GITHUB_SHA}" \
             --set worker.image.repository="${DOCKERHUB_USERNAME}/voting-app-worker" \
             --set worker.image.tag="${GITHUB_SHA}"
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
