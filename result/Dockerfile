@@ -1,24 +1,25 @@
 
 FROM node:22-bookworm-slim
 
-# Install the required OS packages
+# Patch existing Debian packages and install required utilities
 RUN apt-get update && \
+    apt-get upgrade -y && \
     apt-get install -y --no-install-recommends curl tini && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/local/app
 
-# Install dependencies using the committed lockfile
+# Install only production dependencies
+ENV NODE_ENV=production
+ENV PORT=80
+
 COPY package*.json ./
 
-RUN npm ci && \
+RUN npm ci --omit=dev && \
     npm cache clean --force && \
     mv /usr/local/app/node_modules /node_modules
 
 COPY . .
-
-ENV NODE_ENV=production
-ENV PORT=80
 
 EXPOSE 80
 
