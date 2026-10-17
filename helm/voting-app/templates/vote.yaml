@@ -1,0 +1,50 @@
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "voting-app.fullname" . }}-vote
+  labels:
+    {{- include "voting-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: vote
+spec:
+  replicas: {{ .Values.vote.replicas }}
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" (dict "root" . "component" "vote") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.selectorLabels" (dict "root" . "component" "vote") | nindent 8 }}
+    spec:
+      containers:
+        - name: vote
+          image: "{{ .Values.vote.image.repository }}:{{ .Values.vote.image.tag }}"
+          imagePullPolicy: {{ .Values.vote.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "voting-app.fullname" . }}-vote
+  labels:
+    {{- include "voting-app.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.vote.service.type }}
+  selector:
+    {{- include "voting-app.selectorLabels" (dict "root" . "component" "vote") | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.vote.service.port }}
+      targetPort: http
+      {{- if eq .Values.vote.service.type "NodePort" }}
+      nodePort: {{ .Values.vote.service.nodePort }}
+      {{- end }}

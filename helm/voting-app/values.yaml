@@ -1,0 +1,48 @@
+
+vote:
+  replicas: 1
+  image:
+    repository: pharmakarios1/voting-app-vote
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 31000
+
+result:
+  replicas: 1
+  image:
+    repository: pharmakarios1/voting-app-result
+    tag: latest
+    pullPolicy: IfNotPresent
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 31001
+
+worker:
+  replicas: 1
+  image:
+    repository: pharmakarios1/voting-app-worker
+    tag: latest
+    pullPolicy: IfNotPresent
+
+redis:
+  image:
+    repository: redis
+    tag: "7-alpine"
+  service:
+    port: 6379
+
+db:
+  image:
+    repository: postgres
+    tag: "15-alpine"
+  service:
+    port: 5432
+  auth:
+    username: postgres
+    password: postgres
+  storage:
+    size: 1Gi
