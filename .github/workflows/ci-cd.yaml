@@ -54,6 +54,18 @@ jobs:
             ${{ secrets.DOCKER_USERNAME }}/voting-app-${{ matrix.service }}:latest
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: Run Trivy Vulnerability Scanner
+         uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: '${{ secrets.DOCKER_USERNAME }}/voting-app-${{ matrix.service }}:${{ github.sha }}'
+          format: table
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          trivyignores: .trivyignore
+          exit-code: '0'
+          
   deploy-to-eks:
     name: Deploy to Amazon EKS
     runs-on: ubuntu-latest
