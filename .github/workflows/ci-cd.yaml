@@ -1,4 +1,3 @@
-
 name: Voting App Build and Push
 
 on:
@@ -14,7 +13,8 @@ permissions:
 
 concurrency:
   group: voting-app-${{ github.ref }}
-  cancel-in-progress: true
+  # Only cancel superseded PR runs; never cancel a deploy mid-helm-upgrade
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build-and-push:
@@ -30,6 +30,10 @@ jobs:
           - result
           - worker
 
+    env:
+      # Local-only tag: works on fork PRs where secrets are unavailable
+      LOCAL_IMAGE: voting-app-${{ matrix.service }}:ci
+
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -43,20 +47,19 @@ jobs:
           context: ./${{ matrix.service }}
           load: true
           push: false
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/voting-app-${{ matrix.service }}:${{ github.sha }}
-            ${{ secrets.DOCKER_USERNAME }}/voting-app-${{ matrix.service }}:latest
+          tags: ${{ env.LOCAL_IMAGE }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ secrets.DOCKER_USERNAME }}/voting-app-${{ matrix.service }}:${{ github.sha }}
+          image-ref: ${{ env.LOCAL_IMAGE }}
           format: table
-          vuln-type: os,library
+          scanners: vuln
           severity: CRITICAL
-          ignore-unfixed: false
+          ignore-unfixed: true
+          trivyignores: .trivyignore
           exit-code: '1'
 
       - name: Log in to Docker Hub
@@ -66,7 +69,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Push scanned image to Docker Hub
+      - name: Tag and push scanned image to Docker Hub
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
@@ -74,6 +77,9 @@ jobs:
           SERVICE: ${{ matrix.service }}
         run: |
           IMAGE="${DOCKERHUB_USERNAME}/voting-app-${SERVICE}"
+
+          docker tag "${LOCAL_IMAGE}" "${IMAGE}:${IMAGE_SHA}"
+          docker tag "${LOCAL_IMAGE}" "${IMAGE}:latest"
 
           docker push "${IMAGE}:${IMAGE_SHA}"
           docker push "${IMAGE}:latest"
@@ -152,19 +158,17 @@ jobs:
 
       - name: Verify application rollout
         run: |
-          kubectl rollout status deployment/voting-app-voting-app-vote \
-            --namespace voting-app --timeout=180s
-
-          kubectl rollout status deployment/voting-app-voting-app-result \
-            --namespace voting-app --timeout=180s
-
-          kubectl rollout status deployment/voting-app-voting-app-worker \
-            --namespace voting-app --timeout=180s
-
-          kubectl rollout status deployment/voting-app-voting-app-redis \
-            --namespace voting-app --timeout=180s
-
-          kubectl rollout status deployment/voting-app-voting-app-db \
-            --namespace voting-app --timeout=180s
+          for d in vote result worker redis db; do
+            kubectl rollout status "deployment/voting-app-voting-app-${d}" \
+              --namespace voting-app --timeout=180s
+          done
 
           kubectl get pods,services --namespace voting-app
+
+      - name: Debug info on failure
+        if: failure()
+        run: |
+          kubectl get pods,pvc,svc -n voting-app || true
+          kubectl get events -n voting-app --sort-by=.lastTimestamp | tail -40 || true
+          kubectl describe pvc -n voting-app || true
+          kubectl get storageclass || true

@@ -1,0 +1,3 @@
+# zlib minizip integer overflow; Debian marks it will_not_fix and the
+# vulnerable code (zipOpenNewFileInZip4_6) is not shipped or used by this app.
+CVE-2023-45853
