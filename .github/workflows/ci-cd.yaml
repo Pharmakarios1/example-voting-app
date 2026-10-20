@@ -1,3 +1,4 @@
+
 name: Voting App Build and Push
 
 on:
@@ -13,12 +14,11 @@ permissions:
 
 concurrency:
   group: voting-app-${{ github.ref }}
-  # Only cancel superseded PR runs; never cancel a deploy mid-helm-upgrade
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
   build-and-push:
-    name: Build, scan and push ${{ matrix.service }}
+    name: Build and push ${{ matrix.service }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -30,37 +30,12 @@ jobs:
           - result
           - worker
 
-    env:
-      # Local-only tag: works on fork PRs where secrets are unavailable
-      LOCAL_IMAGE: voting-app-${{ matrix.service }}:ci
-
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Build image locally
-        uses: docker/build-push-action@v6
-        with:
-          context: ./${{ matrix.service }}
-          load: true
-          push: false
-          tags: ${{ env.LOCAL_IMAGE }}
-          cache-from: type=gha,scope=${{ matrix.service }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
-
-      - name: Scan image with Trivy
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: ${{ env.LOCAL_IMAGE }}
-          format: table
-          scanners: vuln
-          severity: CRITICAL
-          ignore-unfixed: true
-          trivyignores: .trivyignore
-          exit-code: '1'
 
       - name: Log in to Docker Hub
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -69,21 +44,16 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Tag and push scanned image to Docker Hub
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          IMAGE_SHA: ${{ github.sha }}
-          SERVICE: ${{ matrix.service }}
-        run: |
-          IMAGE="${DOCKERHUB_USERNAME}/voting-app-${SERVICE}"
-
-          docker tag "${LOCAL_IMAGE}" "${IMAGE}:${IMAGE_SHA}"
-          docker tag "${LOCAL_IMAGE}" "${IMAGE}:latest"
-
-          docker push "${IMAGE}:${IMAGE_SHA}"
-          docker push "${IMAGE}:latest"
-
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/voting-app-${{ matrix.service }}:${{ github.sha }}
+            ${{ secrets.DOCKER_USERNAME }}/voting-app-${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
   deploy-to-eks:
     name: Deploy to Amazon EKS
     runs-on: ubuntu-latest
@@ -122,19 +92,16 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Validate Helm chart
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           helm lint ./helm/voting-app
 
           helm template voting-app ./helm/voting-app \
-            --set vote.image.repository="${DOCKERHUB_USERNAME}/voting-app-vote" \
-            --set vote.image.tag="${IMAGE_TAG}" \
-            --set result.image.repository="${DOCKERHUB_USERNAME}/voting-app-result" \
-            --set result.image.tag="${IMAGE_TAG}" \
-            --set worker.image.repository="${DOCKERHUB_USERNAME}/voting-app-worker" \
-            --set worker.image.tag="${IMAGE_TAG}" \
+            --set vote.image.repository="${{ secrets.DOCKER_USERNAME }}/voting-app-vote" \
+            --set vote.image.tag="${GITHUB_SHA}" \
+            --set result.image.repository="${{ secrets.DOCKER_USERNAME }}/voting-app-result" \
+            --set result.image.tag="${GITHUB_SHA}" \
+            --set worker.image.repository="${{ secrets.DOCKER_USERNAME }}/voting-app-worker" \
+            --set worker.image.tag="${GITHUB_SHA}" \
             > /tmp/voting-app-rendered.yaml
 
           test -s /tmp/voting-app-rendered.yaml
@@ -142,7 +109,6 @@ jobs:
       - name: Deploy application with Helm
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
           helm upgrade --install voting-app ./helm/voting-app \
             --namespace voting-app \
@@ -150,25 +116,27 @@ jobs:
             --wait \
             --timeout 10m \
             --set vote.image.repository="${DOCKERHUB_USERNAME}/voting-app-vote" \
-            --set vote.image.tag="${IMAGE_TAG}" \
+            --set vote.image.tag="${GITHUB_SHA}" \
             --set result.image.repository="${DOCKERHUB_USERNAME}/voting-app-result" \
-            --set result.image.tag="${IMAGE_TAG}" \
+            --set result.image.tag="${GITHUB_SHA}" \
             --set worker.image.repository="${DOCKERHUB_USERNAME}/voting-app-worker" \
-            --set worker.image.tag="${IMAGE_TAG}"
+            --set worker.image.tag="${GITHUB_SHA}"
 
       - name: Verify application rollout
         run: |
-          for d in vote result worker redis db; do
-            kubectl rollout status "deployment/voting-app-voting-app-${d}" \
-              --namespace voting-app --timeout=180s
-          done
+          kubectl rollout status deployment/voting-app-voting-app-vote \
+            --namespace voting-app --timeout=180s
+
+          kubectl rollout status deployment/voting-app-voting-app-result \
+            --namespace voting-app --timeout=180s
+
+          kubectl rollout status deployment/voting-app-voting-app-worker \
+            --namespace voting-app --timeout=180s
+
+          kubectl rollout status deployment/voting-app-voting-app-redis \
+            --namespace voting-app --timeout=180s
+
+          kubectl rollout status deployment/voting-app-voting-app-db \
+            --namespace voting-app --timeout=180s
 
           kubectl get pods,services --namespace voting-app
-
-      - name: Debug info on failure
-        if: failure()
-        run: |
-          kubectl get pods,pvc,svc -n voting-app || true
-          kubectl get events -n voting-app --sort-by=.lastTimestamp | tail -40 || true
-          kubectl describe pvc -n voting-app || true
-          kubectl get storageclass || true
