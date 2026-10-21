@@ -1,397 +1,371 @@
-# Voting App DevOps Capstone
+# Voting App — DevOps Capstone 1
 
-A containerized voting application deployed to Amazon EKS using Terraform, Docker, GitHub Actions, Trivy, and Helm.
+A containerized, Kubernetes-deployed voting application demonstrating infrastructure provisioning with Terraform, container image delivery with GitHub Actions, vulnerability scanning with Trivy, application deployment with Helm, persistent storage, AWS EKS, and rollback-based recovery.
 
-## Project Overview
+## Live Application
 
-This project demonstrates how to build, secure, deploy, and manage a containerized application using DevOps practices.
-
-The application allows users to vote, processes votes in the background, stores the results in PostgreSQL, and displays live voting results.
-
-## Application Architecture
-
-The application consists of five main services:
-
-- **Vote:** Web interface for submitting votes.
-- **Redis:** Queue for temporarily storing submitted votes.
-- **Worker:** Processes votes from Redis and saves them to PostgreSQL.
-- **PostgreSQL:** Persistent database for storing votes.
-- **Result:** Web interface for displaying voting results.
-
-### Request Flow
-
-1. A user submits a vote through the Vote application.
-2. Redis queues the vote.
-3. The Worker processes the queued vote.
-4. PostgreSQL stores the vote.
-5. The Result application displays the updated totals.
-
-## Technology Stack
-
-| Technology | Purpose |
+| Component | Link |
 |---|---|
-| Docker | Containerizing application services |
-| Docker Compose | Running the application locally |
-| Terraform | Provisioning AWS infrastructure |
-| Amazon EKS | Managed Kubernetes cluster |
-| Kubernetes | Managing application workloads |
-| Amazon EBS | Persistent database storage |
-| Helm | Packaging and deploying Kubernetes resources |
-| GitHub Actions | Automating CI/CD |
-| Trivy | Scanning container images for vulnerabilities |
-| Docker Hub | Storing container images |
-| AWS IAM and OIDC | Managing access and permissions |
+| 🗳️ Vote page | [Open Voting App](http://k8s-votingap-votingap-c1675d400d-707998152.us-east-1.elb.amazonaws.com/) |
+| 📊 Results page | [View Results](http://k8s-votingap-votingap-c1675d400d-707998152.us-east-1.elb.amazonaws.com/result) |
 
-## Project Structure
+Both application pages are served through the same AWS Application Load Balancer (ALB).
 
-```text
-example-voting-app/
-├── vote/                       # Voting frontend
-├── result/                     # Results frontend
-├── worker/                     # Vote processing service
-├── seed-data/                  # Sample data utilities
-├── compose.yaml                # Local development services
-├── terraform/                  # AWS infrastructure code
-├── helm/
-│   └── voting-app/             # Helm chart
-├── .github/
-│   └── workflows/
-│       └── ci-cd.yaml          # CI/CD pipeline
-└── README.md
+> **Note:** The links use HTTP and the ALB hostname. The application is a demonstration deployment, not a production-secured service.
+
+## 1. Project Overview
+
+The application allows users to vote for Cats or Dogs and displays the results.
+
+The project focuses on taking an application from local container execution to an automated cloud deployment, including infrastructure, CI/CD, image security scanning, persistent storage, Kubernetes routing, and recovery from a failed release.
+
+### Application flow
+
+1. A user submits a vote through the vote frontend.
+2. The vote is placed in Redis.
+3. The worker processes the queued vote.
+4. PostgreSQL stores the vote data.
+5. The results frontend reads and displays the voting totals.
+
+## 2. Architecture
+
+```mermaid
+flowchart TD
+    User[User / Browser]
+    ALB[AWS Application Load Balancer]
+    Vote[Vote Frontend]
+    Result[Results Frontend]
+    Redis[Redis Queue]
+    Worker[Background Worker]
+    DB[(PostgreSQL)]
+    PVC[Persistent Volume - EBS gp3]
+
+    User --> ALB
+    ALB -->|/| Vote
+    ALB -->|/result and assets| Result
+    Vote --> Redis
+    Redis --> Worker
+    Worker --> DB
+    DB --- PVC
+    Result --> DB
 ```
 
-The exact files and directories may vary slightly depending on the repository version.
+### Technology stack
 
-## 1. Run Locally with Docker Compose
+| Area | Technology |
+|---|---|
+| Application | Python, Node.js, Redis, PostgreSQL |
+| Containers | Docker |
+| Container orchestration | Kubernetes |
+| Cloud platform | AWS |
+| Kubernetes service | Amazon EKS |
+| Infrastructure as Code | Terraform |
+| Application packaging | Helm |
+| Container registry | Docker Hub |
+| CI/CD | GitHub Actions |
+| Vulnerability scanning | Trivy |
+| Storage | Amazon EBS, gp3 StorageClass |
+| External access | AWS Application Load Balancer Controller |
 
-Clone the repository and enter the project directory:
+## 3. Infrastructure Provisioning
 
-```bash
-git clone https://github.com/YOUR_USERNAME/example-voting-app.git
-cd example-voting-app
-```
+Terraform provisions the AWS infrastructure used to run the application.
 
-Validate the Compose configuration:
+**Cluster details**
 
-```bash
-docker compose config
-```
+- Cluster name: `voting-app-eks`
+- AWS region: `us-east-1`
+- Kubernetes namespace: `voting-app`
+- Worker node instance type: `t3.medium`
+- Desired worker nodes: `2`
+- Kubernetes application deployment managed by Helm
 
-Build and start the application:
+Terraform was used to define and provision the infrastructure rather than creating the entire environment manually.
 
-```bash
-docker compose up -d --build
-```
-
-Check running containers:
-
-```bash
-docker compose ps
-```
-
-View service logs:
-
-```bash
-docker compose logs -f
-```
-
-Stop the application:
-
-```bash
-docker compose down
-```
-
-The local application provides the foundation for testing the voting workflow before deploying to Kubernetes.
-
-## 2. Container Hardening
-
-The application Dockerfiles were reviewed and improved to follow container security best practices.
-
-Hardening activities include:
-
-- Using appropriate, pinned base-image versions where applicable.
-- Running application processes as non-root users where supported.
-- Adding `.dockerignore` files to avoid copying unnecessary files into images.
-- Building and testing the application containers.
-- Reducing unnecessary files and dependencies in container images.
-
-These practices help reduce image size and limit the potential attack surface.
-
-## 3. Provision AWS Infrastructure with Terraform
-
-Terraform provisions the Kubernetes infrastructure on AWS.
-
-The target infrastructure includes:
-
-- An Amazon EKS cluster named `voting-app-eks`.
-- AWS networking using the default VPC and its subnets.
-- Managed worker nodes.
-- IAM permissions and OIDC integration for Kubernetes workloads.
-- The Amazon EBS CSI driver for persistent volume provisioning.
-
-The cluster is deployed in `us-east-1`.
-
-Initialize and validate Terraform from the infrastructure directory:
+### Useful commands
 
 ```bash
 terraform init
 terraform fmt -check
 terraform validate
 terraform plan
-```
-
-Apply the infrastructure when the plan has been reviewed:
-
-```bash
 terraform apply
 ```
 
-Configure `kubectl` to access the cluster:
+Run Terraform commands from the capstone's Terraform directory. Review the plan before applying infrastructure changes.
 
-```bash
-aws eks update-kubeconfig \
-  --region us-east-1 \
-  --name voting-app-eks
-```
+## 4. Kubernetes Deployment with Helm
 
-Verify cluster access:
-
-```bash
-kubectl get nodes
-kubectl get namespaces
-```
-
-**Important:** Review AWS costs before creating resources. Destroy practice infrastructure when it is no longer needed, after confirming that doing so will not remove data or resources you want to keep.
-
-```bash
-terraform destroy
-```
-
-## 4. CI/CD with GitHub Actions
-
-The GitHub Actions workflow automates building, scanning, publishing, and deploying the application.
-
-The pipeline is designed to:
-
-1. Check out the source code.
-2. Build the Vote, Result, and Worker container images.
-3. Scan the images with Trivy.
-4. Publish images to Docker Hub when changes are pushed to `main`.
-5. Tag images with the Git commit SHA for traceability.
-6. Validate the Helm chart.
-7. Deploy the application to Amazon EKS.
-8. Verify Kubernetes deployment rollouts.
-
-### Image Tags
-
-Images use commit-specific tags, for example:
+The application is packaged in the Helm chart located at:
 
 ```text
-pharmakarios1/voting-app-vote:<commit-sha>
-pharmakarios1/voting-app-result:<commit-sha>
-pharmakarios1/voting-app-worker:<commit-sha>
+helm/voting-app/
+├── Chart.yaml
+├── values.yaml
+└── templates/
+    ├── _helpers.tpl
+    ├── vote.yaml
+    ├── result.yaml
+    ├── worker.yaml
+    ├── redis.yaml
+    └── db.yaml
 ```
 
-Commit-SHA tags make it possible to identify the exact application version deployed.
+The chart manages the vote frontend, results frontend, worker, Redis, PostgreSQL, and database persistent storage.
 
-### Required GitHub Secrets
-
-Configure the following secrets in the repository's GitHub Actions settings:
-
-| Secret | Purpose |
-|---|---|
-| `DOCKER_USERNAME` | Docker Hub username |
-| `DOCKER_PASSWORD` | Docker Hub access token or password |
-| `AWS_ACCESS_KEY_ID` | AWS access key for deployment |
-| `AWS_SECRET_ACCESS_KEY` | AWS secret access key |
-| `AWS_REGION` | AWS deployment region |
-| `EKS_CLUSTER_NAME` | EKS cluster name |
-
-Never commit credentials, access keys, or other secrets to the repository.
-
-## 5. Container Image Scanning with Trivy
-
-Trivy scans built container images for known vulnerabilities before they are published.
-
-The current workflow is configured to fail when it detects **CRITICAL vulnerabilities**, including vulnerabilities that do not yet have fixes.
-
-This helps prevent images with critical known vulnerabilities from progressing through the pipeline.
-
-To inspect an image locally, install Trivy and run:
-
-```bash
-trivy image \
-  --severity CRITICAL \
-  --ignore-unfixed=false \
-  pharmakarios1/voting-app-result:latest
-```
-
-Review scan results and update affected base images or dependencies where appropriate. Do not ignore vulnerabilities without understanding and documenting the risk.
-
-## 6. Deploy with Helm
-
-The Helm chart manages the Kubernetes resources required by the voting application.
-
-It includes the Vote, Result, Worker, Redis, and PostgreSQL services, along with their deployments, service configuration, and database storage.
-
-Validate the chart:
+### Deploy or upgrade the application
 
 ```bash
 helm lint ./helm/voting-app
-```
 
-Render the Kubernetes manifests without deploying:
-
-```bash
-helm template voting-app ./helm/voting-app
-```
-
-Deploy or upgrade the application:
-
-```bash
 helm upgrade --install voting-app ./helm/voting-app \
   --namespace voting-app \
   --create-namespace \
   --wait \
-  --timeout 10m
+  --timeout 5m
 ```
 
-Check the deployment:
+### Verify the deployment
 
 ```bash
+kubectl get nodes
 kubectl get pods -n voting-app
 kubectl get services -n voting-app
-kubectl get deployments -n voting-app
-```
-
-### Application Access
-
-The Vote and Result services are configured as NodePort services on ports `31000` and `31001`, respectively.
-
-Actual external access depends on the cluster's service configuration and networking setup. The project also explores external access through an AWS Application Load Balancer.
-
-## 7. Persistent Database Storage
-
-PostgreSQL requires persistent storage so that database data can survive pod replacement.
-
-The deployment uses:
-
-- A PersistentVolumeClaim (PVC) to request storage.
-- A PersistentVolume (PV) to represent the provisioned storage.
-- Amazon EBS through the EBS CSI driver.
-- The `gp3` StorageClass.
-- A `1Gi` database volume.
-
-Check storage resources:
-
-```bash
 kubectl get pvc -n voting-app
-kubectl get pv
-kubectl get storageclass
+kubectl get ingress -n voting-app
 ```
 
-A `Bound` PVC indicates that the storage claim has been matched to a volume. It does not, by itself, guarantee that PostgreSQL is healthy; check the database pod and logs as well.
+The application has been verified running in EKS, with all five application pods reaching the `Running` state and the PostgreSQL persistent volume claim becoming `Bound`.
 
-```bash
-kubectl get pods -n voting-app
-kubectl logs deployment/voting-app-voting-app-db -n voting-app
+## 5. Shared ALB Ingress
+
+The Ingress resource is maintained at:
+
+```text
+k8s/voting-app-ingress.yaml
 ```
 
-## 8. Helm Rollback Testing
+Ingress name: `voting-app-ingress`
 
-Rollback testing demonstrates how to recover from a failed application release.
+Ingress class: `alb`
 
-View the release history:
+The shared ALB routes requests to the appropriate backend:
+
+| Path | Backend |
+|---|---|
+| `/` | Vote frontend |
+| `/result` | Results frontend |
+| `/stylesheets` | Results frontend assets |
+| `/socket.io.js` | Results frontend Socket.IO client |
+| `/socket.io` | Results frontend Socket.IO connection |
+| `/angular.min.js` | Results frontend assets |
+| `/app.js` | Results frontend assets |
+| `/index.html` | Results frontend |
+
+A URL-rewrite transform maps `/result` to the result application's root path. Explicit asset paths ensure the browser loads the result frontend's JavaScript, stylesheets, and Socket.IO client through the same ALB.
+
+### Verify public routing
 
 ```bash
-helm history voting-app -n voting-app
+ALB="http://k8s-votingap-votingap-c1675d400d-707998152.us-east-1.elb.amazonaws.com"
+
+curl -s -o /dev/null -w "Vote page: %{http_code}\n" "$ALB/"
+curl -s -o /dev/null -w "Result page: %{http_code}\n" "$ALB/result"
+curl -s -o /dev/null -w "Socket.IO client: %{http_code}\n" "$ALB/socket.io.js"
+curl -s -o /dev/null -w "Angular: %{http_code}\n" "$ALB/angular.min.js"
+curl -s -o /dev/null -w "Result JavaScript: %{http_code}\n" "$ALB/app.js"
+curl -s -o /dev/null -w "Result CSS: %{http_code}\n" "$ALB/stylesheets/style.css"
 ```
 
-After identifying a known-good revision, introduce a controlled deployment failure in a safe test environment and observe the result.
+All six endpoints returned `200 OK` during verification. End-to-end voting was also tested successfully through the live application.
 
-Roll back to the selected revision:
+## 6. CI/CD Pipeline
+
+Workflow file:
+
+```text
+.github/workflows/ci-cd.yaml
+```
+
+The GitHub Actions pipeline automates the container delivery and deployment process.
+
+### Pipeline stages
+
+1. Check out the repository.
+2. Set up Docker Buildx.
+3. Build the vote, result, and worker images.
+4. Run Trivy vulnerability scans.
+5. Push images to Docker Hub with commit-SHA and `latest` tags on the configured main-branch push workflow.
+6. Deploy the updated application to EKS using the configured deployment workflow.
+
+### Container images
+
+```text
+pharmakarios1/voting-app-vote
+pharmakarios1/voting-app-result
+pharmakarios1/voting-app-worker
+```
+
+Commit-SHA tags make it possible to identify the image built from a particular revision of the repository.
+
+### Required GitHub configuration
+
+Configure credentials and deployment settings as GitHub Actions Secrets or Variables, as appropriate for the workflow. Never commit real credentials to the repository.
+
+## 7. Container Security with Trivy
+
+Trivy scans the application container images for vulnerabilities.
+
+The configured scan uses:
+
+```yaml
+- name: Run Trivy Vulnerability Scanner
+  uses: aquasecurity/trivy-action@v0.36.0
+  with:
+    image-ref: '${{ secrets.DOCKER_USERNAME }}/voting-app-${{ matrix.service }}:${{ github.sha }}'
+    format: table
+    scanners: vuln
+    severity: CRITICAL,HIGH
+    ignore-unfixed: true
+    trivyignores: .trivyignore
+    exit-code: '0'
+```
+
+The scan is configured to:
+
+- Report CRITICAL and HIGH severity vulnerabilities.
+- Ignore vulnerabilities without available fixes.
+- Apply the project's `.trivyignore` exclusions.
+- Display findings in table format.
+
+**Security note:** `exit-code: '0'` allows the workflow to continue even when matching vulnerabilities are found. The scan provides visibility but does not currently enforce a blocking vulnerability threshold.
+
+## 8. Persistent Storage
+
+PostgreSQL uses a PersistentVolumeClaim backed by Amazon EBS.
+
+Verified storage configuration:
+
+- StorageClass: `gp3`
+- Requested capacity: `1Gi`
+- Access mode: `ReadWriteOnce`
+- Provisioner: EBS CSI driver
+- PVC status: `Bound`
+
+This gives PostgreSQL persistent storage beyond the lifetime of an individual database pod. Actual data durability also depends on the volume lifecycle, backup strategy, and recovery configuration.
+
+## 9. Helm Failure and Rollback Exercise
+
+A deliberate Helm upgrade was used to demonstrate recovery from a failed application release.
+
+The test deployed an invalid vote image tag:
 
 ```bash
-helm rollback voting-app REVISION -n voting-app \
+helm upgrade voting-app ./helm/voting-app \
+  -n voting-app \
+  --reuse-values \
+  --set vote.image.tag=rollback-practice-invalid \
   --wait \
-  --timeout 10m
+  --timeout 2m
 ```
 
-Replace `REVISION` with the actual known-good revision from `helm history`.
+The invalid image caused the vote deployment to fail, with the affected pod entering `ImagePullBackOff`.
 
-Verify the recovery:
+The application was recovered by rolling back to a known-good Helm revision:
+
+```bash
+helm rollback voting-app 6 \
+  -n voting-app \
+  --wait \
+  --timeout 5m
+```
+
+Helm created revision 13 as the deployed rollback revision. The application pods returned to `Running` with readiness checks passing.
+
+### Inspect release history
 
 ```bash
 helm history voting-app -n voting-app
-kubectl get pods -n voting-app
-kubectl rollout status deployment/voting-app-voting-app-vote \
-  -n voting-app
-kubectl rollout status deployment/voting-app-voting-app-result \
-  -n voting-app
-```
-
-A successful rollback should restore the intended application configuration. Confirm that the application works and that the database remains healthy after recovery.
-
-## 9. Troubleshooting Commands
-
-Check all resources in the application namespace:
-
-```bash
-kubectl get all -n voting-app
-```
-
-Inspect pod details:
-
-```bash
-kubectl describe pod POD_NAME -n voting-app
-```
-
-Read current logs:
-
-```bash
-kubectl logs POD_NAME -n voting-app
-```
-
-Read logs from a previously terminated container:
-
-```bash
-kubectl logs POD_NAME -n voting-app --previous
-```
-
-Inspect recent events:
-
-```bash
-kubectl get events -n voting-app \
-  --sort-by=.metadata.creationTimestamp
-```
-
-Check Helm release status:
-
-```bash
 helm status voting-app -n voting-app
+kubectl get pods -n voting-app
 ```
 
-## Project Deliverables
+This exercise demonstrates the ability to identify a failed release, restore a previous working configuration, and verify application recovery.
 
-- [ ] Forked and working Voting App repository.
-- [ ] Locally running application using Docker Compose.
-- [ ] Hardened application containers.
-- [ ] Terraform code for reproducible AWS EKS infrastructure.
-- [ ] GitHub Actions CI/CD workflow.
-- [ ] Trivy vulnerability scanning.
-- [ ] Docker Hub images tagged with commit SHAs.
-- [ ] Helm chart for deploying the application.
-- [ ] Persistent PostgreSQL storage.
-- [ ] Successful deployment and application verification.
-- [ ] Demonstrated failed release and successful Helm rollback.
-- [ ] Architecture diagram and documented deployment instructions.
+## 10. Project Verification Checklist
 
-## Learning Outcomes
+- [x] Fork and clone the Voting App repository.
+- [x] Run the application locally with Docker Compose.
+- [x] Complete container hardening.
+- [x] Provision EKS infrastructure with Terraform.
+- [x] Deploy the application with Helm.
+- [x] Configure PostgreSQL persistent storage.
+- [x] Configure shared ALB path-based routing.
+- [x] Verify the vote and results pages through the ALB.
+- [x] Verify end-to-end voting works.
+- [x] Automate image build, scan, push, and deployment.
+- [x] Restore Trivy scanning in the GitHub Actions workflow.
+- [x] Demonstrate a failed Helm release and successful rollback.
+- [ ] Capture and attach final screenshots and command outputs as project evidence.
+- [ ] Review IAM permissions and evaluate GitHub Actions OIDC federation as an authentication improvement.
 
-This project demonstrates practical experience with containerization, container security, infrastructure as code, Kubernetes orchestration, AWS cloud infrastructure, CI/CD automation, vulnerability scanning, Helm releases, persistent storage, troubleshooting, and deployment recovery.
+## 11. Project Evidence
 
-## Acknowledgements
+Capture the following evidence for the repository README, portfolio, or project submission.
 
-The application is based on the [Docker Samples Example Voting App](https://github.com/dockersamples/example-voting-app).
+| Evidence | What to capture |
+|---|---|
+| Live vote page | Browser showing the Cats vs Dogs voting interface |
+| Live results page | Browser showing voting totals |
+| End-to-end voting | Vote submission and corresponding updated result |
+| Terraform | Successful validation and relevant apply output |
+| EKS | `kubectl get nodes` showing Ready nodes |
+| Workloads | `kubectl get pods -n voting-app` showing healthy pods |
+| Storage | `kubectl get pvc -n voting-app` showing the Bound database claim |
+| Ingress | `kubectl get ingress -n voting-app` showing the ALB hostname |
+| CI/CD | Successful GitHub Actions run showing build, scan, push, and deployment stages |
+| Trivy | Scan output showing vulnerability findings or a clean scan |
+| Helm history | `helm history voting-app -n voting-app` showing the failed release and subsequent rollback |
+| Recovery | `kubectl get pods -n voting-app` showing healthy pods after rollback |
 
-This repository extends the application with DevOps automation and cloud deployment practices for educational purposes.
+Suggested evidence directory:
+
+```text
+docs/
+└── evidence/
+    ├── vote-page.png
+    ├── results-page.png
+    ├── end-to-end-voting.png
+    ├── terraform-validation.png
+    ├── eks-nodes.png
+    ├── healthy-pods.png
+    ├── persistent-volume.png
+    ├── alb-ingress.png
+    ├── github-actions-pipeline.png
+    ├── trivy-scan.png
+    └── helm-rollback.png
+```
+
+Only add screenshots after capturing the corresponding results. Do not commit AWS credentials, Docker Hub passwords, Kubernetes secrets, Terraform state files, or other sensitive data as evidence.
+
+## 12. Lessons Learned
+
+This capstone provided practical experience with:
+
+- Containerizing and hardening a multi-service application.
+- Provisioning cloud infrastructure using Terraform.
+- Deploying and operating Kubernetes workloads on Amazon EKS.
+- Packaging applications with Helm.
+- Configuring persistent storage through EBS CSI.
+- Routing multiple frontend paths through a shared AWS ALB.
+- Automating image builds, vulnerability scans, image publishing, and application deployment.
+- Recovering from failed Helm releases using rollback.
+- Verifying an application across its frontend, queue, worker, database, and results components.
+
+## Conclusion
+
+The Voting App capstone demonstrates an end-to-end DevOps workflow: infrastructure as code, containerization, Kubernetes orchestration, automated delivery, vulnerability scanning, persistent storage, ingress routing, and release recovery.
+
+The application is running on Amazon EKS, and the vote and results pages are accessible through the shared ALB.
+
+**Live demo:** [Vote](http://k8s-votingap-votingap-c1675d400d-707998152.us-east-1.elb.amazonaws.com/) | [Results](http://k8s-votingap-votingap-c1675d400d-707998152.us-east-1.elb.amazonaws.com/result)
