@@ -1,0 +1,85 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: voting-app-ingress
+  namespace: voting-app
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/transforms.voting-app-voting-app-result: >
+      [
+        {
+          "type": "url-rewrite",
+          "urlRewriteConfig": {
+            "rewrites": [
+              {
+                "regex": "^/result/?$",
+                "replace": "/"
+              }
+            ]
+          }
+        }
+      ]
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /result
+            pathType: Prefix
+            backend:
+              service:
+                name: voting-app-voting-app-result
+                port:
+                  number: 80
+          - path: /stylesheets
+            pathType: Prefix
+            backend:
+              service:
+                name: voting-app-voting-app-result
+                port:
+                  number: 80
+          - path: /socket.io.js
+            pathType: Exact
+            backend:
+              service:
+                name: voting-app-voting-app-result
+                port:
+                  number: 80
+          - path: /socket.io
+            pathType: Prefix
+            backend:
+              service:
+                name: voting-app-voting-app-result
+                port:
+                  number: 80
+          - path: /angular.min.js
+            pathType: Exact
+            backend:
+              service:
+                name: voting-app-voting-app-result
+                port:
+                  number: 80
+          - path: /app.js
+            pathType: Exact
+            backend:
+              service:
+                name: voting-app-voting-app-result
+                port:
+                  number: 80
+          - path: /index.html
+            pathType: Exact
+            backend:
+              service:
+                name: voting-app-voting-app-result
+                port:
+                  number: 80
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: voting-app-voting-app-vote
+                port:
+                  number: 80

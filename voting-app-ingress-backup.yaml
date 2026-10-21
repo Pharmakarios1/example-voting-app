@@ -1,0 +1,80 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    alb.ingress.kubernetes.io/healthcheck-path: /
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/transforms.voting-app-voting-app-result: '[{"type":"url-rewrite","urlRewriteConfig":{"rewrites":[{"regex":"^/result/?$","replace":"/"}]}}]'
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"networking.k8s.io/v1","kind":"Ingress","metadata":{"annotations":{"alb.ingress.kubernetes.io/healthcheck-path":"/","alb.ingress.kubernetes.io/listen-ports":"[{\"HTTP\":80}]","alb.ingress.kubernetes.io/scheme":"internet-facing","alb.ingress.kubernetes.io/target-type":"ip","alb.ingress.kubernetes.io/transforms.voting-app-voting-app-result":"[{\"type\":\"url-rewrite\",\"urlRewriteConfig\":{\"rewrites\":[{\"regex\":\"^/result/?$\",\"replace\":\"/\"}]}}]"},"name":"voting-app-ingress","namespace":"voting-app"},"spec":{"ingressClassName":"alb","rules":[{"http":{"paths":[{"backend":{"service":{"name":"voting-app-voting-app-result","port":{"number":80}}},"path":"/result","pathType":"Prefix"},{"backend":{"service":{"name":"voting-app-voting-app-result","port":{"number":80}}},"path":"/stylesheets","pathType":"Prefix"},{"backend":{"service":{"name":"voting-app-voting-app-result","port":{"number":80}}},"path":"/socket.io","pathType":"Prefix"},{"backend":{"service":{"name":"voting-app-voting-app-result","port":{"number":80}}},"path":"/angular.min.js","pathType":"Prefix"},{"backend":{"service":{"name":"voting-app-voting-app-result","port":{"number":80}}},"path":"/app.js","pathType":"Prefix"},{"backend":{"service":{"name":"voting-app-voting-app-result","port":{"number":80}}},"path":"/index.html","pathType":"Prefix"},{"backend":{"service":{"name":"voting-app-voting-app-vote","port":{"number":80}}},"path":"/","pathType":"Prefix"}]}}]}}
+  creationTimestamp: "2026-10-19T16:54:47Z"
+  finalizers:
+  - ingress.k8s.aws/resources
+  generation: 2
+  name: voting-app-ingress
+  namespace: voting-app
+  resourceVersion: "1164170"
+  uid: f9767d3a-b8e3-42f9-b61c-eb1bd2c86f3d
+spec:
+  ingressClassName: alb
+  rules:
+  - http:
+      paths:
+      - backend:
+          service:
+            name: voting-app-voting-app-result
+            port:
+              number: 80
+        path: /result
+        pathType: Prefix
+      - backend:
+          service:
+            name: voting-app-voting-app-result
+            port:
+              number: 80
+        path: /stylesheets
+        pathType: Prefix
+      - backend:
+          service:
+            name: voting-app-voting-app-result
+            port:
+              number: 80
+        path: /socket.io
+        pathType: Prefix
+      - backend:
+          service:
+            name: voting-app-voting-app-result
+            port:
+              number: 80
+        path: /angular.min.js
+        pathType: Prefix
+      - backend:
+          service:
+            name: voting-app-voting-app-result
+            port:
+              number: 80
+        path: /app.js
+        pathType: Prefix
+      - backend:
+          service:
+            name: voting-app-voting-app-result
+            port:
+              number: 80
+        path: /index.html
+        pathType: Prefix
+      - backend:
+          service:
+            name: voting-app-voting-app-vote
+            port:
+              number: 80
+        path: /
+        pathType: Prefix
+status:
+  loadBalancer:
+    ingress:
+    - hostname: k8s-votingap-votingap-c1675d400d-707998152.us-east-1.elb.amazonaws.com
+      ports:
+      - port: 80
+        protocol: ""
